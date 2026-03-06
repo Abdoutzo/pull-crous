@@ -8,7 +8,7 @@ from brevo.transactional_emails import (
     SendTransacEmailRequestSender,
     SendTransacEmailRequestToItem,
 )
-from config import BREVO_API_KEY, SENDER_EMAIL, SENDER_NAME, RECIPIENT_EMAIL
+from config import BREVO_API_KEY, SENDER_EMAIL, SENDER_NAME, load_recipients
 
 
 def build_html(item: dict) -> str:
@@ -89,8 +89,10 @@ def send_alert(item: dict):
     if not BREVO_API_KEY:
         logging.error("BREVO_API_KEY is not set. Cannot send email.")
         return
-    if not RECIPIENT_EMAIL:
-        logging.error("RECIPIENT_EMAIL is not set. Cannot send email.")
+
+    recipients = load_recipients()
+    if not recipients:
+        logging.error("No recipients configured. Add emails to recipients.txt or set RECIPIENT_EMAIL in .env")
         return
 
     residence = item.get("residence", {})
@@ -104,15 +106,13 @@ def send_alert(item: dict):
                 name=SENDER_NAME,
             ),
             to=[
-                SendTransacEmailRequestToItem(
-                    email=RECIPIENT_EMAIL,
-                    name="Me",
-                )
+                SendTransacEmailRequestToItem(email=email, name="")
+                for email in recipients
             ],
             subject=f"🏠 CROUS room available: {name}",
             html_content=build_html(item),
         )
-        logging.info(f"Email sent for listing: {name}")
+        logging.info(f"Email sent for listing: {name} → {', '.join(recipients)}")
 
     except ApiError as e:
         logging.error(f"Brevo API error {e.status_code}: {e.body}")

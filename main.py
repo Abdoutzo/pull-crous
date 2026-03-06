@@ -22,6 +22,7 @@ from scraper import load_idf_ids, fetch_available_accommodations
 from notifier import send_alert
 from state import load_seen_ids, save_seen_ids
 from config import POLL_INTERVAL
+import os
 
 logging.basicConfig(
     level=logging.INFO,
@@ -68,8 +69,13 @@ def main():
 
     logging.info(f"Watching {len(idf_rows)} IDF accommodations.")
 
-    seen_ids = load_seen_ids()
-    logging.info(f"Loaded {len(seen_ids)} previously seen IDs from state.")
+    if os.getenv("RESET_STATE", "").lower() == "true":
+        logging.info("RESET_STATE=true — clearing seen IDs, will re-alert on all available rooms.")
+        seen_ids = set()
+        save_seen_ids(seen_ids)
+    else:
+        seen_ids = load_seen_ids()
+        logging.info(f"Loaded {len(seen_ids)} previously seen IDs from state.")
 
     while True:
         try:

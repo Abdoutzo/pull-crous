@@ -7,10 +7,21 @@ load_dotenv()
 TOOL_ID = 42
 POLL_INTERVAL = 60  # seconds between each full scan of IDF accommodations
 
+
+def _read_int_env(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None or value.strip() == "":
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
 # --- SMTP email transport ---
 # Supported values for SMTP_SECURITY: "starttls", "ssl", "none"
 SMTP_HOST = os.getenv("SMTP_HOST")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_PORT = _read_int_env("SMTP_PORT", 587)
 SMTP_SECURITY = os.getenv("SMTP_SECURITY", "starttls").strip().lower()
 SMTP_USERNAME = os.getenv("SMTP_USERNAME")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")

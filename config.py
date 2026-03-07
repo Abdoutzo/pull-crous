@@ -7,8 +7,14 @@ load_dotenv()
 TOOL_ID = 42
 POLL_INTERVAL = 60  # seconds between each full scan of IDF accommodations
 
-# --- Brevo ---
-BREVO_API_KEY = os.getenv("BREVO_API_KEY")
+# --- SMTP email transport ---
+# Supported values for SMTP_SECURITY: "starttls", "ssl", "none"
+SMTP_HOST = os.getenv("SMTP_HOST")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_SECURITY = os.getenv("SMTP_SECURITY", "starttls").strip().lower()
+SMTP_USERNAME = os.getenv("SMTP_USERNAME")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
 SENDER_NAME = "CROUS Bot"
 

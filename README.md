@@ -4,7 +4,7 @@ I was looking for a student room in Paris and quickly realized the CROUS website
 
 So I built this. It hits every single room's API endpoint directly, filters down to Ile-de-France, and polls them every 60 seconds. The second something opens up — you get an email. No more refreshing the map hoping something appears.
 
-Zero paid services. Just Python and a free Brevo account.
+Zero paid services. Just Python and a standard SMTP account.
 
 ## The trick
 
@@ -38,13 +38,13 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 cp .env.example .env
-# open .env and paste your Brevo API key
+# open .env and fill your SMTP credentials
 ```
 
-You only need one external account — Brevo for sending emails (free, 300/day, no credit card):
-1. Sign up at brevo.com
-2. SMTP & API -> API Keys -> generate a key -> paste it in `.env`
-3. Senders -> add your sender email and verify it
+You need one SMTP account for sending emails (for example Gmail, Outlook, Brevo SMTP, etc.):
+1. Set SMTP host/port/security in `.env`
+2. Set `SMTP_USERNAME` and `SMTP_PASSWORD` (app password if required by provider)
+3. Set `SENDER_EMAIL` and `RECIPIENT_EMAIL`
 
 ## Running it
 
@@ -71,8 +71,12 @@ Or deploy it to Railway so your machine doesn't have to stay on. Push to a priva
 
 | Variable | What it is |
 |---|---|
-| `BREVO_API_KEY` | Your Brevo API key |
-| `SENDER_EMAIL` | The address emails are sent from (must be verified in Brevo) |
+| `SMTP_HOST` | SMTP server hostname (e.g. `smtp.gmail.com`) |
+| `SMTP_PORT` | SMTP port (usually `587` for starttls, `465` for ssl) |
+| `SMTP_SECURITY` | `starttls`, `ssl`, or `none` |
+| `SMTP_USERNAME` | SMTP login username |
+| `SMTP_PASSWORD` | SMTP login password (often an app password) |
+| `SENDER_EMAIL` | Sender email shown in outgoing alerts |
 | `RECIPIENT_EMAIL` | Who gets the alerts — separate multiple emails with commas |
 
 For multiple recipients just comma-separate them: `you@gmail.com,friend@gmail.com,other@gmail.com`
@@ -83,7 +87,7 @@ For multiple recipients just comma-separate them: `you@gmail.com,friend@gmail.co
 crous_scrapper/
 ├── main.py          - the loop that runs forever
 ├── scraper.py       - polls each IDF room's API endpoint
-├── notifier.py      - builds and sends the email via Brevo
+├── notifier.py      - builds and sends the email via SMTP
 ├── state.py         - remembers which rooms we've already alerted on
 ├── config.py        - loads everything from .env
 ├── build_csv.py     - one-time: crawls all 3132 IDs into a CSV

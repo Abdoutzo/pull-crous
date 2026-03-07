@@ -19,7 +19,7 @@ import sys
 from typing import List
 
 from scraper import load_idf_ids, fetch_available_accommodations
-from notifier import send_alert
+from notifier import send_alerts
 from state import load_seen_ids, save_seen_ids
 from config import POLL_INTERVAL
 import os
@@ -48,16 +48,18 @@ def check(idf_rows: List[dict], seen_ids: set) -> set:
     new_listings = [item for item in available if str(item.get("id")) not in seen_ids]
 
     if new_listings:
-        logging.info(f"🎉 {len(new_listings)} NEW listing(s) found!")
-        for item in new_listings:
-            acc_id = str(item.get("id"))
-            if send_alert(item):
-                seen_ids.add(acc_id)
-            else:
-                logging.warning(
-                    "Alert send failed for listing %s; will retry on next scan.",
-                    acc_id,
-                )
+        logging.info(f"🎉 {len(new_listings)} NEW listing(s) found in this window.")
+        if send_alerts(new_listings):
+            seen_ids.update(
+                str(item.get("id"))
+                for item in new_listings
+                if item.get("id") is not None
+            )
+        else:
+            logging.warning(
+                "Batch alert send failed; all %d listing(s) will be retried next scan.",
+                len(new_listings),
+            )
     else:
         logging.info(f"{len(available)} available but all already seen — no new alerts.")
 

@@ -5,6 +5,7 @@ import logging
 import smtplib
 import ssl
 from email.message import EmailMessage
+from typing import List
 
 from config import (
     SMTP_HOST,
@@ -18,14 +19,12 @@ from config import (
 )
 
 
-def build_html(item: dict) -> str:
-    # Residence info is nested
+def _extract_listing(item: dict) -> dict:
     residence = item.get("residence", {})
     name = item.get("label", residence.get("label", "N/A"))
     address = residence.get("address", "N/A")
     listing_url = item.get("url", "https://trouverunlogement.lescrous.fr/")
 
-    # Rent: API returns cents, convert to euros
     occupation_modes = item.get("occupationModes", [])
     rents = []
     mode_types = []
@@ -39,52 +38,57 @@ def build_html(item: dict) -> str:
     rent_str = f"{min(rents):.0f}-{max(rents):.0f} EUR/month" if rents else "N/A"
     modes_str = ", ".join(mode_types) if mode_types else "N/A"
 
-    # Equipment
-    equipments = item.get("equipments", [])
-    equip_str = ", ".join(e.get("label", "") for e in equipments) if equipments else "N/A"
-
-    # Area
     area = item.get("area", {})
     area_str = f"{area.get('min', '?')}-{area.get('max', '?')} m2"
 
+    return {
+        "name": name,
+        "address": address,
+        "rent": rent_str,
+        "area": area_str,
+        "type": modes_str,
+        "url": listing_url,
+    }
+
+
+def _build_batch_html(items: List[dict]) -> str:
+    rows = []
+    for item in items:
+        listing = _extract_listing(item)
+        rows.append(
+            (
+                "<tr>"
+                f"<td style='padding:8px; border-bottom:1px solid #eee;'>{listing['name']}</td>"
+                f"<td style='padding:8px; border-bottom:1px solid #eee;'>{listing['rent']}</td>"
+                f"<td style='padding:8px; border-bottom:1px solid #eee;'>{listing['area']}</td>"
+                f"<td style='padding:8px; border-bottom:1px solid #eee;'>{listing['type']}</td>"
+                f"<td style='padding:8px; border-bottom:1px solid #eee;'>{listing['address']}</td>"
+                f"<td style='padding:8px; border-bottom:1px solid #eee;'><a href='{listing['url']}'>Open</a></td>"
+                "</tr>"
+            )
+        )
+
+    rows_html = "\n".join(rows)
     return f"""
     <html>
-    <body style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 600px;">
-        <h2 style="color: #e63946;">CROUS room just dropped!</h2>
-        <table style="border-collapse: collapse; width: 100%;">
-            <tr>
-                <td style="padding: 8px; font-weight: bold; width: 140px;">Residence</td>
-                <td style="padding: 8px;">{name}</td>
-            </tr>
-            <tr style="background: #f4f4f4;">
-                <td style="padding: 8px; font-weight: bold;">Address</td>
-                <td style="padding: 8px;">{address}</td>
-            </tr>
-            <tr>
-                <td style="padding: 8px; font-weight: bold;">Rent</td>
-                <td style="padding: 8px;">{rent_str}</td>
-            </tr>
-            <tr style="background: #f4f4f4;">
-                <td style="padding: 8px; font-weight: bold;">Area</td>
-                <td style="padding: 8px;">{area_str}</td>
-            </tr>
-            <tr>
-                <td style="padding: 8px; font-weight: bold;">Type</td>
-                <td style="padding: 8px;">{modes_str}</td>
-            </tr>
-            <tr style="background: #f4f4f4;">
-                <td style="padding: 8px; font-weight: bold;">Equipment</td>
-                <td style="padding: 8px;">{equip_str}</td>
-            </tr>
+    <body style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+        <h2 style="color: #e63946;">CROUS: {len(items)} new listing(s) in the last 30 minutes</h2>
+        <table style="border-collapse: collapse; width: 100%; font-size: 14px;">
+            <thead>
+                <tr style="background: #f6f6f6;">
+                    <th style="padding: 8px; text-align: left;">Residence</th>
+                    <th style="padding: 8px; text-align: left;">Rent</th>
+                    <th style="padding: 8px; text-align: left;">Area</th>
+                    <th style="padding: 8px; text-align: left;">Type</th>
+                    <th style="padding: 8px; text-align: left;">Address</th>
+                    <th style="padding: 8px; text-align: left;">Link</th>
+                </tr>
+            </thead>
+            <tbody>
+                {rows_html}
+            </tbody>
         </table>
-        <br>
-        <a href="{listing_url}"
-           style="background: #e63946; color: white; padding: 12px 24px;
-                  text-decoration: none; border-radius: 5px; font-weight: bold;
-                  display: inline-block;">
-            View listing
-        </a>
-        <p style="color: #999; font-size: 12px; margin-top: 20px;">
+        <p style="color: #888; font-size: 12px; margin-top: 16px;">
             Sent by your CROUS scraper bot.
         </p>
     </body>
@@ -92,21 +96,19 @@ def build_html(item: dict) -> str:
     """
 
 
-def _build_message(item: dict, recipients: list) -> EmailMessage:
-    residence = item.get("residence", {})
-    name = item.get("label", residence.get("label", "Unknown listing"))
-    listing_url = item.get("url", "https://trouverunlogement.lescrous.fr/")
-
+def _build_message(items: List[dict], recipients: List[str]) -> EmailMessage:
     msg = EmailMessage()
     msg["From"] = f"{SENDER_NAME} <{SENDER_EMAIL}>"
     msg["To"] = ", ".join(recipients)
-    msg["Subject"] = f"CROUS room available: {name}"
-    msg.set_content(
-        "A CROUS room is now available.\n"
-        f"Listing: {name}\n"
-        f"Link: {listing_url}\n"
-    )
-    msg.add_alternative(build_html(item), subtype="html")
+    msg["Subject"] = f"CROUS alert: {len(items)} new listing(s)"
+
+    lines = ["New CROUS listings detected in the last 30 minutes:", ""]
+    for item in items:
+        listing = _extract_listing(item)
+        lines.append(f"- {listing['name']} ({listing['rent']})")
+        lines.append(f"  {listing['url']}")
+    msg.set_content("\n".join(lines))
+    msg.add_alternative(_build_batch_html(items), subtype="html")
     return msg
 
 
@@ -131,10 +133,7 @@ def _missing_smtp_config() -> bool:
 def _open_smtp():
     security = SMTP_SECURITY
     if security not in {"starttls", "ssl", "none"}:
-        logging.warning(
-            "Unknown SMTP_SECURITY='%s'. Falling back to starttls.",
-            security,
-        )
+        logging.warning("Unknown SMTP_SECURITY='%s'. Falling back to starttls.", security)
         security = "starttls"
 
     if security == "ssl":
@@ -151,7 +150,10 @@ def _open_smtp():
     return client
 
 
-def send_alert(item: dict) -> bool:
+def send_alerts(items: List[dict]) -> bool:
+    if not items:
+        return True
+
     recipients = load_recipients()
     if not recipients:
         logging.error("No recipients configured. Set RECIPIENT_EMAIL in .env.")
@@ -159,16 +161,18 @@ def send_alert(item: dict) -> bool:
     if _missing_smtp_config():
         return False
 
-    msg = _build_message(item, recipients)
-    residence = item.get("residence", {})
-    name = item.get("label", residence.get("label", "Unknown listing"))
-
+    msg = _build_message(items, recipients)
     try:
         with _open_smtp() as client:
             client.login(SMTP_USERNAME, SMTP_PASSWORD)
             client.send_message(msg)
-        logging.info("Email sent for listing: %s -> %s", name, ", ".join(recipients))
+        logging.info("Batch email sent for %d listing(s) -> %s", len(items), ", ".join(recipients))
         return True
     except Exception as e:
-        logging.error("Unexpected SMTP error while sending email: %s", e)
+        logging.error("Unexpected SMTP error while sending batch email: %s", e)
         return False
+
+
+def send_alert(item: dict) -> bool:
+    # Backward-compatible wrapper.
+    return send_alerts([item])

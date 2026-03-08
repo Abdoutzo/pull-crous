@@ -11,7 +11,7 @@ try:
     LOCAL_TIMEZONE = ZoneInfo("Europe/Paris")
 except Exception:
     LOCAL_TIMEZONE = datetime.now().astimezone().tzinfo
-FAST_SCAN_WEEKDAYS = {1, 3}  # Tuesday, Thursday
+FAST_SCAN_WEEKDAYS = {1, 4}  # Tuesday, Friday
 FAST_POLL_INTERVAL = 300  # 5 minutes
 DEFAULT_POLL_INTERVAL = 900  # 15 minutes
 

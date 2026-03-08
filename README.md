@@ -3,8 +3,8 @@
 I was looking for a student room in Paris and quickly realized the CROUS website is kind of a joke to navigate. The map search only shows rooms that are "actively listed" — meaning most of the time it's just empty and you think nothing's available. But turns out there's a whole database of rooms sitting behind the scenes with IDs from 1 to 3132, each with their own page, and some of them quietly flip to available without ever showing up on the map.
 
 So I built this. It hits every single room's API endpoint directly, filters down to Ile-de-France, and polls on a weekday schedule:
-- Tuesday + Thursday: every 5 minutes
-- Monday + Wednesday + Friday: every 15 minutes
+- Tuesday + Friday: every 5 minutes
+- Monday + Wednesday + Thursday: every 15 minutes
 - Weekend: no email
 
 Zero paid services. Just Python and a standard SMTP account.
@@ -67,8 +67,8 @@ python3 main.py
 ```
 
 It'll scan all ~420 IDF rooms and send one email per scan window:
-- Tuesday + Thursday: every 5 minutes
-- Monday + Wednesday + Friday: every 15 minutes
+- Tuesday + Friday: every 5 minutes
+- Monday + Wednesday + Thursday: every 15 minutes
 - Saturday + Sunday: no email
 
 You can also just leave it running on your machine — keep the terminal open and don't close the laptop. If you close the lid on a MacBook it will sleep even if plugged in and the script stops. To avoid that go to System Settings -> Battery -> Options and enable "Prevent automatic sleeping when the display is off".

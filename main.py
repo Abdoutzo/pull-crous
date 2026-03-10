@@ -21,7 +21,7 @@ from typing import List
 from scraper import load_idf_ids, fetch_available_accommodations
 from notifier import send_alerts
 from state import load_seen_ids, save_seen_ids
-from config import get_current_poll_interval, is_weekend
+from config import get_current_poll_interval, is_weekend, is_within_email_window
 import os
 
 logging.basicConfig(
@@ -40,6 +40,11 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 def check(idf_rows: List[dict], seen_ids: set) -> set:
     if is_weekend():
         logging.info("Weekend mode active: skipping scan and emails.")
+        save_seen_ids(seen_ids)
+        return seen_ids
+
+    if not is_within_email_window():
+        logging.info("Outside email window (08:00-18:00 Europe/Paris): skipping scan and emails.")
         save_seen_ids(seen_ids)
         return seen_ids
 

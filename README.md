@@ -6,6 +6,7 @@ So I built this. It hits every single room's API endpoint directly, filters down
 - Tuesday + Friday: every 5 minutes
 - Monday + Wednesday + Thursday: every 15 minutes
 - Weekend: no email
+- Emails only between 08:00 and 18:00 (Europe/Paris)
 
 Zero paid services. Just Python and a standard SMTP account.
 
@@ -70,6 +71,7 @@ It'll scan all ~420 IDF rooms and send one email per scan window:
 - Tuesday + Friday: every 5 minutes
 - Monday + Wednesday + Thursday: every 15 minutes
 - Saturday + Sunday: no email
+- Hours: 08:00 to 18:00 (Europe/Paris)
 
 You can also just leave it running on your machine — keep the terminal open and don't close the laptop. If you close the lid on a MacBook it will sleep even if plugged in and the script stops. To avoid that go to System Settings -> Battery -> Options and enable "Prevent automatic sleeping when the display is off".
 

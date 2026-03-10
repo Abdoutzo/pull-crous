@@ -14,6 +14,8 @@ except Exception:
 FAST_SCAN_WEEKDAYS = {1, 4}  # Tuesday, Friday
 FAST_POLL_INTERVAL = 300  # 5 minutes
 DEFAULT_POLL_INTERVAL = 900  # 15 minutes
+EMAIL_START_HOUR = 8   # 08:00 inclusive
+EMAIL_END_HOUR = 18    # 18:00 exclusive
 
 
 def current_local_time() -> datetime:
@@ -23,6 +25,11 @@ def current_local_time() -> datetime:
 def is_weekend(now: datetime | None = None) -> bool:
     current = now or current_local_time()
     return current.weekday() >= 5  # Saturday, Sunday
+
+
+def is_within_email_window(now: datetime | None = None) -> bool:
+    current = now or current_local_time()
+    return EMAIL_START_HOUR <= current.hour < EMAIL_END_HOUR
 
 
 def get_current_poll_interval(now: datetime | None = None) -> int:

@@ -1,28 +1,29 @@
 """
-Main polling loop — entry point of the CROUS scraper.
+Main polling loop - entry point of the CROUS scraper.
 
 Flow:
   1. Load IDF accommodation IDs from idf_accommodations.csv
-  2. Every POLL_INTERVAL seconds, hit each ID's direct API endpoint
-  3. If one flips to available=True and we haven't seen it before → send email
-
-Prerequisites:
-  - Run build_csv.py once to build the full database
-  - Run filter_idf.py once to extract IDF-only rooms
-  - Fill in .env with your API keys
-
-Run with: python3 main.py
+  2. Every poll interval, hit each ID's direct API endpoint
+  3. Alert for newly seen available IDs
+  4. Send one end-of-day summary before 18:00 for all new IDs found that day
 """
-import time
 import logging
+import os
 import sys
+import time
 from typing import List
 
-from scraper import load_idf_ids, fetch_available_accommodations
-from notifier import send_alerts
-from state import load_seen_ids, save_seen_ids
-from config import get_current_poll_interval, is_weekend, is_within_email_window
-import os
+from config import (
+    current_local_time,
+    get_current_poll_interval,
+    is_daily_summary_window,
+    is_weekend,
+    is_within_email_window,
+)
+from notifier import send_alerts, send_daily_summary
+from scraper import fetch_available_accommodations, load_idf_ids
+from state import load_runtime_state, save_runtime_state
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,21 +33,64 @@ logging.basicConfig(
         logging.FileHandler("crous.log"),
     ],
 )
-# Silence httpx's per-request HTTP logs — we don't need "GET ... 200 OK" spam
+# Silence per-request HTTP logs.
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
-def check(idf_rows: List[dict], seen_ids: set) -> set:
-    if is_weekend():
-        logging.info("Weekend mode active: skipping scan and emails.")
-        save_seen_ids(seen_ids)
-        return seen_ids
+def _snapshot_listing(item: dict, first_seen_at: str) -> dict:
+    return {
+        "id": item.get("id"),
+        "label": item.get("label"),
+        "url": item.get("url"),
+        "area": item.get("area", {}),
+        "occupationModes": item.get("occupationModes", []),
+        "residence": item.get("residence", {}),
+        "first_seen_at": first_seen_at,
+    }
 
-    if not is_within_email_window():
+
+def _reset_daily_if_needed(state_data: dict, today: str):
+    if state_data.get("daily_date") != today:
+        state_data["daily_date"] = today
+        state_data["daily_ids"] = set()
+        state_data["daily_items"] = []
+
+
+def _maybe_send_daily_summary(state_data: dict, now) -> dict:
+    today = now.date().isoformat()
+    if state_data.get("last_summary_date") == today:
+        return state_data
+    if not is_daily_summary_window(now):
+        return state_data
+
+    daily_items = state_data.get("daily_items", [])
+    if not daily_items:
+        logging.info("No new listings found on %s. Daily summary not sent.", today)
+        state_data["last_summary_date"] = today
+        return state_data
+
+    if send_daily_summary(daily_items, today):
+        state_data["last_summary_date"] = today
+    else:
+        logging.warning("Failed to send daily summary for %s; will retry next scan.", today)
+    return state_data
+
+
+def check(idf_rows: List[dict], state_data: dict) -> dict:
+    now = current_local_time()
+    today = now.date().isoformat()
+    _reset_daily_if_needed(state_data, today)
+
+    if is_weekend(now):
+        logging.info("Weekend mode active: skipping scan and emails.")
+        save_runtime_state(state_data)
+        return state_data
+
+    if not is_within_email_window(now):
         logging.info("Outside email window (08:00-18:00 Europe/Paris): skipping scan and emails.")
-        save_seen_ids(seen_ids)
-        return seen_ids
+        save_runtime_state(state_data)
+        return state_data
 
     available = fetch_available_accommodations(idf_rows)
 
@@ -54,31 +98,46 @@ def check(idf_rows: List[dict], seen_ids: set) -> set:
         logging.info("Nothing available right now. Patience...")
         if not send_alerts([]):
             logging.warning("Failed to send status email; will retry next scan.")
-        save_seen_ids(seen_ids)
-        return seen_ids
+        state_data = _maybe_send_daily_summary(state_data, now)
+        save_runtime_state(state_data)
+        return state_data
+
+    seen_ids = state_data.get("seen_ids", set())
+    daily_ids = state_data.get("daily_ids", set())
+    daily_items = state_data.get("daily_items", [])
 
     new_listings = [item for item in available if str(item.get("id")) not in seen_ids]
 
     if new_listings:
-        logging.info(f"🎉 {len(new_listings)} NEW listing(s) found in this window.")
+        logging.info("%d new listing(s) found in this scan.", len(new_listings))
         if send_alerts(new_listings):
-            seen_ids.update(
-                str(item.get("id"))
-                for item in new_listings
-                if item.get("id") is not None
-            )
+            first_seen_at = now.isoformat()
+            for item in new_listings:
+                listing_id = item.get("id")
+                if listing_id is None:
+                    continue
+
+                listing_id = str(listing_id)
+                seen_ids.add(listing_id)
+                if listing_id not in daily_ids:
+                    daily_ids.add(listing_id)
+                    daily_items.append(_snapshot_listing(item, first_seen_at))
         else:
             logging.warning(
                 "Batch alert send failed; all %d listing(s) will be retried next scan.",
                 len(new_listings),
             )
     else:
-        logging.info(f"{len(available)} available but all already seen — sending status email.")
+        logging.info("%d available but all already seen - sending status email.", len(available))
         if not send_alerts([]):
             logging.warning("Failed to send status email; will retry next scan.")
 
-    save_seen_ids(seen_ids)
-    return seen_ids
+    state_data["seen_ids"] = seen_ids
+    state_data["daily_ids"] = daily_ids
+    state_data["daily_items"] = daily_items
+    state_data = _maybe_send_daily_summary(state_data, now)
+    save_runtime_state(state_data)
+    return state_data
 
 
 def main():
@@ -89,38 +148,50 @@ def main():
         logging.error("No IDF rows loaded. Run build_csv.py then filter_idf.py first!")
         sys.exit(1)
 
-    logging.info(f"Watching {len(idf_rows)} IDF accommodations.")
+    logging.info("Watching %d IDF accommodations.", len(idf_rows))
 
     if os.getenv("RESET_STATE", "").lower() == "true":
-        logging.info("RESET_STATE=true — clearing seen IDs, will re-alert on all available rooms.")
-        seen_ids = set()
-        save_seen_ids(seen_ids)
+        logging.info("RESET_STATE=true - clearing seen IDs and daily summary state.")
+        state_data = {
+            "seen_ids": set(),
+            "daily_date": "",
+            "daily_ids": set(),
+            "daily_items": [],
+            "last_summary_date": "",
+        }
+        save_runtime_state(state_data)
     else:
-        seen_ids = load_seen_ids()
-        logging.info(f"Loaded {len(seen_ids)} previously seen IDs from state.")
+        state_data = load_runtime_state()
+        logging.info(
+            "Loaded state: %d seen IDs, %d daily listing(s) for %s.",
+            len(state_data.get("seen_ids", set())),
+            len(state_data.get("daily_items", [])),
+            state_data.get("daily_date", "N/A"),
+        )
 
     run_once = os.getenv("RUN_ONCE", "").lower() == "true"
     if run_once:
-        logging.info("RUN_ONCE=true — running a single scan and exiting.")
+        logging.info("RUN_ONCE=true - running a single scan and exiting.")
         try:
-            check(idf_rows, seen_ids)
-        except Exception as e:
-            logging.error(f"Unhandled error during single scan: {e}", exc_info=True)
+            check(idf_rows, state_data)
+        except Exception as exc:
+            logging.error("Unhandled error during single scan: %s", exc, exc_info=True)
         return
 
     while True:
         try:
-            seen_ids = check(idf_rows, seen_ids)
+            state_data = check(idf_rows, state_data)
         except KeyboardInterrupt:
             logging.info("Stopped by user. Bye!")
             break
-        except Exception as e:
-            logging.error(f"Unhandled error: {e}", exc_info=True)
+        except Exception as exc:
+            logging.error("Unhandled error: %s", exc, exc_info=True)
 
-        poll_interval = get_current_poll_interval()
-        logging.info(f"Next scan in {poll_interval}s...\n")
+        poll_interval = get_current_poll_interval(current_local_time())
+        logging.info("Next scan in %ss...\n", poll_interval)
         time.sleep(poll_interval)
 
 
 if __name__ == "__main__":
     main()
+

@@ -11,11 +11,12 @@ try:
     LOCAL_TIMEZONE = ZoneInfo("Europe/Paris")
 except Exception:
     LOCAL_TIMEZONE = datetime.now().astimezone().tzinfo
-FAST_SCAN_WEEKDAYS = {1, 4}  # Tuesday, Friday
-FAST_POLL_INTERVAL = 300  # 5 minutes
-DEFAULT_POLL_INTERVAL = 900  # 15 minutes
+WEEKDAY_POLL_INTERVAL = 300  # 5 minutes
+WEEKEND_POLL_INTERVAL = 900  # 15 minutes
 EMAIL_START_HOUR = 8   # 08:00 inclusive
 EMAIL_END_HOUR = 18    # 18:00 exclusive
+SUMMARY_HOUR = 17
+SUMMARY_MINUTE = 55
 
 
 def current_local_time() -> datetime:
@@ -32,13 +33,24 @@ def is_within_email_window(now: datetime | None = None) -> bool:
     return EMAIL_START_HOUR <= current.hour < EMAIL_END_HOUR
 
 
+def is_daily_summary_window(now: datetime | None = None) -> bool:
+    current = now or current_local_time()
+    return (
+        current.hour == SUMMARY_HOUR
+        and current.minute >= SUMMARY_MINUTE
+        and current.hour < EMAIL_END_HOUR
+    )
+
+
 def get_current_poll_interval(now: datetime | None = None) -> int:
     current = now or current_local_time()
-    return FAST_POLL_INTERVAL if current.weekday() in FAST_SCAN_WEEKDAYS else DEFAULT_POLL_INTERVAL
+    if current.weekday() < 5:
+        return WEEKDAY_POLL_INTERVAL
+    return WEEKEND_POLL_INTERVAL
 
 
 # Backward-compatible constant; main loop uses get_current_poll_interval().
-POLL_INTERVAL = DEFAULT_POLL_INTERVAL
+POLL_INTERVAL = WEEKDAY_POLL_INTERVAL
 
 
 def _read_str_env(name: str):

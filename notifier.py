@@ -130,6 +130,70 @@ def _build_message(items: List[dict], recipients: List[str]) -> EmailMessage:
     return msg
 
 
+def _build_daily_summary_html(items: List[dict], summary_date: str) -> str:
+    rows = []
+    for item in items:
+        listing = _extract_listing(item)
+        first_seen_at = item.get("first_seen_at", "N/A")
+        rows.append(
+            (
+                "<tr>"
+                f"<td style='padding:8px; border-bottom:1px solid #eee;'>{listing['name']}</td>"
+                f"<td style='padding:8px; border-bottom:1px solid #eee;'>{listing['rent']}</td>"
+                f"<td style='padding:8px; border-bottom:1px solid #eee;'>{listing['area']}</td>"
+                f"<td style='padding:8px; border-bottom:1px solid #eee;'>{listing['type']}</td>"
+                f"<td style='padding:8px; border-bottom:1px solid #eee;'>{listing['address']}</td>"
+                f"<td style='padding:8px; border-bottom:1px solid #eee;'>{first_seen_at}</td>"
+                f"<td style='padding:8px; border-bottom:1px solid #eee;'><a href='{listing['url']}'>Open</a></td>"
+                "</tr>"
+            )
+        )
+
+    rows_html = "\n".join(rows)
+    return f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+        <h2 style="color: #1d3557;">CROUS synthese du {summary_date}: {len(items)} nouveau(x) logement(s)</h2>
+        <table style="border-collapse: collapse; width: 100%; font-size: 14px;">
+            <thead>
+                <tr style="background: #f6f6f6;">
+                    <th style="padding: 8px; text-align: left;">Residence</th>
+                    <th style="padding: 8px; text-align: left;">Rent</th>
+                    <th style="padding: 8px; text-align: left;">Area</th>
+                    <th style="padding: 8px; text-align: left;">Type</th>
+                    <th style="padding: 8px; text-align: left;">Address</th>
+                    <th style="padding: 8px; text-align: left;">First seen</th>
+                    <th style="padding: 8px; text-align: left;">Link</th>
+                </tr>
+            </thead>
+            <tbody>
+                {rows_html}
+            </tbody>
+        </table>
+        <p style="color: #888; font-size: 12px; margin-top: 16px;">
+            Sent by your CROUS scraper bot.
+        </p>
+    </body>
+    </html>
+    """
+
+
+def _build_daily_summary_message(items: List[dict], recipients: List[str], summary_date: str) -> EmailMessage:
+    msg = EmailMessage()
+    msg["From"] = f"{SENDER_NAME} <{SENDER_EMAIL}>"
+    msg["To"] = ", ".join(recipients)
+    msg["Subject"] = f"CROUS synthese du jour: {len(items)} logement(s) ({summary_date})"
+
+    lines = [f"Synthese CROUS du {summary_date}", ""]
+    for item in items:
+        listing = _extract_listing(item)
+        lines.append(f"- {listing['name']} ({listing['rent']})")
+        lines.append(f"  {listing['url']}")
+    msg.set_content("\n".join(lines))
+    msg.add_alternative(_build_daily_summary_html(items, summary_date), subtype="html")
+    return msg
+
+
 def _missing_smtp_config() -> bool:
     required = {
         "SMTP_HOST": SMTP_HOST,
@@ -192,6 +256,34 @@ def send_alerts(items: List[dict]) -> bool:
         return True
     except Exception as e:
         logging.error("Unexpected SMTP error while sending batch email: %s", e)
+        return False
+
+
+def send_daily_summary(items: List[dict], summary_date: str) -> bool:
+    if not items:
+        logging.info("Daily summary skipped: no new listings found on %s.", summary_date)
+        return True
+
+    recipients = load_recipients()
+    if not recipients:
+        logging.error("No recipients configured. Set RECIPIENT_EMAIL in .env.")
+        return False
+    if _missing_smtp_config():
+        return False
+
+    msg = _build_daily_summary_message(items, recipients, summary_date)
+    try:
+        with _open_smtp() as client:
+            client.login(SMTP_USERNAME, SMTP_PASSWORD)
+            client.send_message(msg)
+        logging.info(
+            "Daily summary email sent for %d listing(s) -> %s",
+            len(items),
+            ", ".join(recipients),
+        )
+        return True
+    except Exception as e:
+        logging.error("Unexpected SMTP error while sending daily summary: %s", e)
         return False
 
 

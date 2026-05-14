@@ -71,6 +71,11 @@ def _read_int_env(name: str, default: int) -> int:
         return default
 
 
+def is_force_email_window() -> bool:
+    value = _read_str_env("FORCE_EMAIL_WINDOW")
+    return (value or "").lower() == "true"
+
+
 def _infer_smtp(sender_email: str):
     if not sender_email or "@" not in sender_email:
         return None, 587, "starttls"

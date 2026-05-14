@@ -78,6 +78,7 @@ You can also just leave it running on your machine — keep the terminal open an
 Or deploy it for free on GitHub Actions (already configured in `.github/workflows/crous-monitor.yml`). It runs in the cloud even if your computer is off.
 
 Important GitHub note: scheduled workflows in public repos are automatically disabled after 60 days without repository activity. If the monitor suddenly stops, push a small commit (or re-enable the workflow in the Actions tab) to wake it back up.
+For an immediate manual email test outside business hours, open the Actions tab, run `CROUS Monitor`, and set `force_email_window=true`.
 
 ## Environment variables
 

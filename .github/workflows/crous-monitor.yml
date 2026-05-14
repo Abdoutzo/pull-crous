@@ -12,6 +12,10 @@ on:
         description: "Set to true to clear seen IDs and resend current available listings once"
         required: false
         default: "false"
+      force_email_window:
+        description: "Set to true to bypass 08:00-18:00 and weekend restrictions for a manual test"
+        required: false
+        default: "false"
 
 permissions:
   contents: read
@@ -77,6 +81,7 @@ jobs:
           SENDER_EMAIL: outaboo532@gmail.com
           RECIPIENT_EMAIL: abderrazzak.outzoula@centrale-casablanca.ma
           RESET_STATE: ${{ github.event_name == 'workflow_dispatch' && inputs.reset_state || 'false' }}
+          FORCE_EMAIL_WINDOW: ${{ github.event_name == 'workflow_dispatch' && inputs.force_email_window || 'false' }}
           RUN_ONCE: "true"
         run: python main.py
 

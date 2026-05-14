@@ -17,6 +17,7 @@ from config import (
     current_local_time,
     get_current_poll_interval,
     is_daily_summary_window,
+    is_force_email_window,
     is_weekend,
     is_within_email_window,
 )
@@ -81,13 +82,16 @@ def check(idf_rows: List[dict], state_data: dict) -> dict:
     now = current_local_time()
     today = now.date().isoformat()
     _reset_daily_if_needed(state_data, today)
+    force_email_window = is_force_email_window()
 
-    if is_weekend(now):
+    if force_email_window:
+        logging.info("FORCE_EMAIL_WINDOW=true - bypassing weekday/hour restrictions for this run.")
+    elif is_weekend(now):
         logging.info("Weekend mode active: skipping scan and emails.")
         save_runtime_state(state_data)
         return state_data
 
-    if not is_within_email_window(now):
+    if not force_email_window and not is_within_email_window(now):
         logging.info("Outside email window (08:00-18:00 Europe/Paris): skipping scan and emails.")
         save_runtime_state(state_data)
         return state_data

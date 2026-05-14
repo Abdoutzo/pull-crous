@@ -16,6 +16,10 @@ on:
         description: "Set to true to bypass 08:00-18:00 and weekend restrictions for a manual test"
         required: false
         default: "false"
+      require_email_success:
+        description: "Set to true to fail the workflow if SMTP email sending fails"
+        required: false
+        default: "true"
 
 permissions:
   contents: read
@@ -82,6 +86,7 @@ jobs:
           RECIPIENT_EMAIL: abderrazzak.outzoula@centrale-casablanca.ma
           RESET_STATE: ${{ github.event_name == 'workflow_dispatch' && inputs.reset_state || 'false' }}
           FORCE_EMAIL_WINDOW: ${{ github.event_name == 'workflow_dispatch' && inputs.force_email_window || 'false' }}
+          REQUIRE_EMAIL_SUCCESS: ${{ github.event_name == 'workflow_dispatch' && inputs.require_email_success || 'false' }}
           RUN_ONCE: "true"
         run: python main.py
 

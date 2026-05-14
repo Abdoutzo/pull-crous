@@ -83,6 +83,7 @@ def check(idf_rows: List[dict], state_data: dict) -> dict:
     today = now.date().isoformat()
     _reset_daily_if_needed(state_data, today)
     force_email_window = is_force_email_window()
+    require_email_success = os.getenv("REQUIRE_EMAIL_SUCCESS", "").lower() == "true"
 
     if force_email_window:
         logging.info("FORCE_EMAIL_WINDOW=true - bypassing weekday/hour restrictions for this run.")
@@ -101,6 +102,8 @@ def check(idf_rows: List[dict], state_data: dict) -> dict:
     if not available:
         logging.info("Nothing available right now. Patience...")
         if not send_alerts([]):
+            if require_email_success:
+                raise RuntimeError("Status email delivery failed.")
             logging.warning("Failed to send status email; will retry next scan.")
         state_data = _maybe_send_daily_summary(state_data, now)
         save_runtime_state(state_data)
@@ -127,6 +130,10 @@ def check(idf_rows: List[dict], state_data: dict) -> dict:
                     daily_ids.add(listing_id)
                     daily_items.append(_snapshot_listing(item, first_seen_at))
         else:
+            if require_email_success:
+                raise RuntimeError(
+                    f"Alert email delivery failed for {len(new_listings)} new listing(s)."
+                )
             logging.warning(
                 "Batch alert send failed; all %d listing(s) will be retried next scan.",
                 len(new_listings),
@@ -134,6 +141,8 @@ def check(idf_rows: List[dict], state_data: dict) -> dict:
     else:
         logging.info("%d available but all already seen - sending status email.", len(available))
         if not send_alerts([]):
+            if require_email_success:
+                raise RuntimeError("Status email delivery failed.")
             logging.warning("Failed to send status email; will retry next scan.")
 
     state_data["seen_ids"] = seen_ids
@@ -180,6 +189,7 @@ def main():
             check(idf_rows, state_data)
         except Exception as exc:
             logging.error("Unhandled error during single scan: %s", exc, exc_info=True)
+            sys.exit(1)
         return
 
     while True:

@@ -98,8 +98,7 @@ def _infer_smtp(sender_email: str):
 
 
 # --- Sender/recipients ---
-# Defaults requested by user; can still be overridden by env vars.
-SENDER_EMAIL = _read_str_env("SENDER_EMAIL") or "outaboo532@gmail.com"
+SENDER_EMAIL = _read_str_env("SENDER_EMAIL")
 SENDER_NAME = "CROUS Bot"
 
 
@@ -119,7 +118,7 @@ SMTP_PASSWORD = _read_str_env("SMTP_PASSWORD") or _read_str_env("EMAIL_APP_PASSW
 
 def load_recipients() -> list:
     """Load recipient emails from RECIPIENT_EMAIL env var (comma-separated)."""
-    value = os.getenv("RECIPIENT_EMAIL", "abderrazzak.outzoula@centrale-casablanca.ma")
+    value = os.getenv("RECIPIENT_EMAIL", "")
     return [e.strip() for e in value.split(",") if e.strip()]
 
 

@@ -82,8 +82,8 @@ jobs:
       - name: Run monitor once
         env:
           EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
-          SENDER_EMAIL: outaboo532@gmail.com
-          RECIPIENT_EMAIL: abderrazzak.outzoula@centrale-casablanca.ma
+          SENDER_EMAIL: ${{ vars.SENDER_EMAIL }}
+          RECIPIENT_EMAIL: ${{ vars.RECIPIENT_EMAIL }}
           RESET_STATE: ${{ github.event_name == 'workflow_dispatch' && inputs.reset_state || 'false' }}
           FORCE_EMAIL_WINDOW: ${{ github.event_name == 'workflow_dispatch' && inputs.force_email_window || 'false' }}
           REQUIRE_EMAIL_SUCCESS: ${{ github.event_name == 'workflow_dispatch' && inputs.require_email_success || 'false' }}

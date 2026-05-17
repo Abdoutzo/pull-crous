@@ -81,7 +81,11 @@ jobs:
 
       - name: Run monitor once
         env:
+          EMAIL_PROVIDER: ${{ vars.EMAIL_PROVIDER }}
           EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM_EMAIL: ${{ vars.RESEND_FROM_EMAIL }}
+          RESEND_REPLY_TO: ${{ vars.RESEND_REPLY_TO }}
           SENDER_EMAIL: ${{ vars.SENDER_EMAIL }}
           RECIPIENT_EMAIL: ${{ vars.RECIPIENT_EMAIL }}
           RESET_STATE: ${{ github.event_name == 'workflow_dispatch' && inputs.reset_state || 'false' }}

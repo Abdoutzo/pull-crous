@@ -100,6 +100,7 @@ def _infer_smtp(sender_email: str):
 # --- Sender/recipients ---
 SENDER_EMAIL = _read_str_env("SENDER_EMAIL")
 SENDER_NAME = "CROUS Bot"
+EMAIL_PROVIDER = (_read_str_env("EMAIL_PROVIDER") or "auto").lower()
 
 
 # --- SMTP email transport ---
@@ -110,6 +111,12 @@ SMTP_PORT = _read_int_env("SMTP_PORT", _default_port)
 SMTP_SECURITY = (_read_str_env("SMTP_SECURITY") or _default_security).lower()
 SMTP_USERNAME = _read_str_env("SMTP_USERNAME") or SENDER_EMAIL
 SMTP_PASSWORD = _read_str_env("SMTP_PASSWORD") or _read_str_env("EMAIL_APP_PASSWORD")
+
+# --- Resend email transport ---
+RESEND_API_KEY = _read_str_env("RESEND_API_KEY")
+RESEND_FROM_EMAIL = _read_str_env("RESEND_FROM_EMAIL")
+RESEND_REPLY_TO = _read_str_env("RESEND_REPLY_TO") or SENDER_EMAIL
+RESEND_API_BASE_URL = _read_str_env("RESEND_API_BASE_URL") or "https://api.resend.com"
 
 # --- Recipients ---
 # Comma-separated list of emails in RECIPIENT_EMAIL env var

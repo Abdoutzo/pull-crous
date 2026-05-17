@@ -1,146 +1,154 @@
 # CROUS IDF Scraper
 
-I was looking for a student room in Paris and quickly realized the CROUS website is kind of a joke to navigate. The map search only shows rooms that are "actively listed" — meaning most of the time it's just empty and you think nothing's available. But turns out there's a whole database of rooms sitting behind the scenes with IDs from 1 to 3132, each with their own page, and some of them quietly flip to available without ever showing up on the map.
+This bot monitors the CROUS accommodation API directly instead of relying on the public map, which often hides listings that are still in the backend. It keeps a local list of Ile-de-France residences, polls them on a schedule, and sends an email when a new room becomes available.
 
-So I built this. It hits every single room's API endpoint directly, filters down to Ile-de-France, and polls continuously:
+Schedule:
 - Weekdays: every 5 minutes
-- Weekend: quiet mode (no scan emails)
-- Emails only between 08:00 and 18:00 (Europe/Paris)
+- Weekend: quiet mode
+- Email window: 08:00 to 18:00 Europe/Paris
 
-Zero paid services. Just Python and a standard SMTP account.
+## How it works
 
-## The trick
+The public map search is not reliable enough for monitoring. This project queries the direct JSON endpoint for each accommodation ID:
 
-The official map search endpoint (`/api/fr/search?bounds=...`) is basically useless — it only returns rooms that CROUS decides to surface, which outside of peak season is nothing. But there's a direct JSON endpoint nobody talks about:
-
-```
+```text
 GET https://trouverunlogement.lescrous.fr/api/fr/tools/42/accommodations/{id}
 ```
 
-Call it with any ID from 1 to 3132 and you get back full room details including a dead-simple `"available": true/false` field. No auth needed, no scraping HTML, just clean JSON. So we call all of them.
+That endpoint returns the room details and an `available` flag, so the bot can detect new openings without scraping HTML.
 
-## How it runs
+## Project flow
 
+```text
+build_csv.py   -> crawls all known IDs into all_accommodations.csv
+filter_idf.py  -> keeps only Ile-de-France rows in idf_accommodations.csv
+main.py        -> long-running monitor loop
 ```
-build_csv.py   ->  hits all 3132 IDs once, dumps everything to all_accommodations.csv
-filter_idf.py  ->  keeps only IDF (Paris + suburbs + Clichy), saves idf_accommodations.csv
-main.py        ->  polls on a weekday schedule and sends one email per scan window
-```
 
-When a room drops, the email tells you the name and full address of the residence, rent in euros (the API stores it in cents for some reason, we convert it), room size in m2, whether it's solo, couple or coloc, and what equipment is included.
-
-## Setup
+## Local setup
 
 ```bash
 git clone https://github.com/Abdoutzo/pull-crous
 cd pull-crous
 
-python3 -m venv .venv
-source .venv/bin/activate
+python -m venv .venv
+.venv\Scripts\activate
 
 pip install -r requirements.txt
-
-cp .env.example .env
-# open .env and fill your SMTP credentials
+copy .env.example .env
 ```
 
-Minimal setup (Gmail):
-1. Set `SENDER_EMAIL`
-2. Set `RECIPIENT_EMAIL`
-3. Set `EMAIL_APP_PASSWORD` (Google App Password)
+For local SMTP testing, fill `.env` with:
 
-Advanced setup (optional): override `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURITY`, `SMTP_USERNAME`, `SMTP_PASSWORD`.
-
-## Running it
-
-First time only, build the database:
-
-```bash
-python3 build_csv.py    # ~15 min, hits all 3132 IDs
-python3 filter_idf.py   # instant, keeps only IDF rooms
+```env
+EMAIL_PROVIDER=smtp
+SENDER_EMAIL=your_sender@gmail.com
+RECIPIENT_EMAIL=your_recipient@example.com
+EMAIL_APP_PASSWORD=your_gmail_app_password
 ```
 
-Then run the bot:
+Then run:
 
 ```bash
-python3 main.py
-```
-
-It'll scan all ~420 IDF rooms and send one email per scan window:
-- Monday to Friday: every 5 minutes
-- Saturday + Sunday: no email
-- Hours: 08:00 to 18:00 (Europe/Paris)
-
-You can also just leave it running on your machine — keep the terminal open and don't close the laptop. If you close the lid on a MacBook it will sleep even if plugged in and the script stops. To avoid that go to System Settings -> Battery -> Options and enable "Prevent automatic sleeping when the display is off".
-
-## Recommended deployment
-
-The reliable production setup is Railway, not GitHub Actions. Railway keeps one worker alive and lets `main.py` run as a normal long-lived loop, which is much more dependable than GitHub's scheduled runner cadence for a 5-minute monitor.
-
-Current Railway entrypoint:
-
-```bash
+python build_csv.py
+python filter_idf.py
 python main.py
 ```
 
-Recommended Railway env vars:
+## Railway deployment
 
-```bash
+Railway is the recommended production runtime because it keeps a worker alive continuously. GitHub Actions is still useful as a backup and for manual tests, but it is not dependable enough for a 5-minute monitor on its own.
+
+Important: Railway documents that SMTP is only available on the Pro plan and above. Free, Trial, and Hobby plans must use an HTTPS email API instead. This repo now supports Resend for that case.
+
+Recommended Railway variables:
+
+```env
+EMAIL_PROVIDER=resend
+RECIPIENT_EMAIL=your_recipient@example.com
+SENDER_EMAIL=your_sender@gmail.com
+RESEND_API_KEY=re_xxxxxxxxx
+RESEND_FROM_EMAIL=alerts@your-verified-domain.com
+RESEND_REPLY_TO=your_sender@gmail.com
+
 STATE_FILE=/data/seen_ids.json
 LOG_FILE=/data/crous.log
 ENABLE_FILE_LOGGING=true
 ```
 
-If you mount a Railway volume at `/data`, the bot keeps its seen IDs and daily summary state across restarts/deploys.
+Recommended Railway setup:
+- Service type: Worker
+- Start command: `python main.py`
+- Volume mount path: `/data`
 
-GitHub Actions is still useful as a free backup and for manual SMTP tests.
+Resend note:
+- `RESEND_FROM_EMAIL` must use a verified sender/domain in Resend.
+- The default `resend.dev` testing domain only works when sending to the email address attached to your own Resend account.
 
-Important GitHub note: scheduled workflows in public repos are automatically disabled after 60 days without repository activity. If the monitor suddenly stops, push a small commit (or re-enable the workflow in the Actions tab) to wake it back up.
-For an immediate manual email test outside business hours, open the Actions tab, run `CROUS Monitor`, and set `force_email_window=true`.
-For a strict SMTP check, keep `require_email_success=true` so the manual run fails if GitHub cannot actually send the email.
+## GitHub Actions
+
+The workflow still works for manual tests and as a lightweight backup. It now supports both SMTP and Resend depending on the repository variables and secrets you provide.
+
+Repository variables:
+- `EMAIL_PROVIDER`
+- `SENDER_EMAIL`
+- `RECIPIENT_EMAIL`
+- `RESEND_FROM_EMAIL`
+- `RESEND_REPLY_TO`
+
+Repository secrets:
+- `EMAIL_APP_PASSWORD`
+- `RESEND_API_KEY`
+
+Useful manual inputs:
+- `force_email_window=true` to bypass weekday/hour restrictions
+- `require_email_success=true` to fail the run if delivery fails
+- `reset_state=true` to resend currently available listings once
+
+Important GitHub note: scheduled workflows in public repositories are automatically disabled after 60 days without repository activity. If the schedule stops, re-enable the workflow or push a small commit.
 
 ## Environment variables
 
-| Variable | What it is |
+| Variable | Purpose |
 |---|---|
-| `EMAIL_APP_PASSWORD` | App password (recommended for Gmail) |
-| `SENDER_EMAIL` | Sender email shown in outgoing alerts |
-| `RECIPIENT_EMAIL` | Who gets the alerts — separate multiple emails with commas |
-| `SMTP_HOST` | Optional manual SMTP host override |
-| `SMTP_PORT` | Optional manual SMTP port override |
-| `SMTP_SECURITY` | Optional: `starttls`, `ssl`, or `none` |
-| `SMTP_USERNAME` | Optional manual SMTP username override |
-| `SMTP_PASSWORD` | Optional manual SMTP password override |
-| `STATE_FILE` | Optional path for persisted monitor state (`seen_ids`, daily summary state) |
-| `LOG_FILE` | Optional path for file logs |
-| `ENABLE_FILE_LOGGING` | Optional: `true`/`false` to keep a log file in addition to stdout |
-| `FORCE_EMAIL_WINDOW` | Manual-test override to bypass the 08:00-18:00 / weekday restriction |
-| `REQUIRE_EMAIL_SUCCESS` | Manual-test guard to fail the run if SMTP delivery fails |
-
-For multiple recipients just comma-separate them: `you@gmail.com,friend@gmail.com,other@gmail.com`
+| `EMAIL_PROVIDER` | `smtp`, `resend`, or `auto` |
+| `RECIPIENT_EMAIL` | Comma-separated recipient list |
+| `SENDER_EMAIL` | Sender identity used by SMTP and reply-to defaults |
+| `EMAIL_APP_PASSWORD` | Gmail app password for local SMTP |
+| `SMTP_HOST` | Optional SMTP override |
+| `SMTP_PORT` | Optional SMTP override |
+| `SMTP_SECURITY` | `starttls`, `ssl`, or `none` |
+| `SMTP_USERNAME` | Optional SMTP override |
+| `SMTP_PASSWORD` | Optional SMTP override |
+| `RESEND_API_KEY` | Resend API key |
+| `RESEND_FROM_EMAIL` | Verified Resend sender address |
+| `RESEND_REPLY_TO` | Optional reply-to address for Resend emails |
+| `RESEND_API_BASE_URL` | Optional Resend API base URL override |
+| `STATE_FILE` | Path to persisted monitor state |
+| `LOG_FILE` | Path to file logs |
+| `ENABLE_FILE_LOGGING` | `true` or `false` |
+| `FORCE_EMAIL_WINDOW` | Manual test override for weekday/hour restrictions |
+| `REQUIRE_EMAIL_SUCCESS` | Fail the run when delivery fails |
 
 ## Files
 
-```
-crous_scrapper/
-├── main.py          - the loop that runs forever
-├── scraper.py       - polls each IDF room's API endpoint
-├── notifier.py      - builds and sends the email via SMTP
-├── state.py         - remembers which rooms we've already alerted on
-├── config.py        - loads everything from .env
-├── build_csv.py     - one-time: crawls all 3132 IDs into a CSV
-├── filter_idf.py    - one-time: filters that CSV down to IDF only
-├── requirements.txt
-├── .env.example
-├── .gitignore
-├── Procfile         - for Railway
-└── railway.json     - for Railway
+```text
+main.py
+scraper.py
+notifier.py
+state.py
+config.py
+build_csv.py
+filter_idf.py
+requirements.txt
+.env.example
+.github/workflows/crous-monitor.yml
+railway.json
 ```
 
-## A few things worth knowing
+## Notes
 
-- `toolId=42` is the identifier for the 2025-2026 academic year, if it stops working next year that's probably why
-- The CSV is built once and stays static, re-run `build_csv.py` and `filter_idf.py` if you want fresh data
-- Requests are throttled on purpose, don't lower it below 30s or you'll probably get rate-limited
-- `seen_ids.json` keeps track of what's been alerted so you don't get spammed after a restart
-- For exact 5-minute uptime, prefer Railway over GitHub scheduled workflows
+- `toolId=42` is tied to the current academic year and may need an update later.
+- `seen_ids.json` prevents duplicate alerts after restarts.
+- Re-run `build_csv.py` and `filter_idf.py` if you want a fresh local accommodation list.
+- Keep the polling interval reasonable to avoid hammering the CROUS API.

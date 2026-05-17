@@ -11,9 +11,13 @@ import logging
 import os
 import sys
 import time
+from pathlib import Path
 from typing import List
 
 from config import (
+    ENABLE_FILE_LOGGING,
+    LOG_FILE,
+    STATE_FILE,
     current_local_time,
     get_current_poll_interval,
     is_daily_summary_window,
@@ -26,13 +30,19 @@ from scraper import fetch_available_accommodations, load_idf_ids
 from state import load_runtime_state, save_runtime_state
 
 
+def _build_log_handlers() -> list[logging.Handler]:
+    handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
+    if ENABLE_FILE_LOGGING:
+        log_path = Path(LOG_FILE)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        handlers.append(logging.FileHandler(log_path, encoding="utf-8"))
+    return handlers
+
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler("crous.log"),
-    ],
+    handlers=_build_log_handlers(),
 )
 # Silence per-request HTTP logs.
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -155,6 +165,11 @@ def check(idf_rows: List[dict], state_data: dict) -> dict:
 
 def main():
     logging.info("=== CROUS IDF Scraper started ===")
+    logging.info("State file: %s", os.path.abspath(STATE_FILE))
+    if ENABLE_FILE_LOGGING:
+        logging.info("File logging enabled: %s", os.path.abspath(LOG_FILE))
+    else:
+        logging.info("File logging disabled; stdout only.")
 
     idf_rows = load_idf_ids()
     if not idf_rows:

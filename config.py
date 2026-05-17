@@ -71,9 +71,15 @@ def _read_int_env(name: str, default: int) -> int:
         return default
 
 
+def _read_bool_env(name: str, default: bool = False) -> bool:
+    value = _read_str_env(name)
+    if value is None:
+        return default
+    return value.lower() in {"1", "true", "yes", "on"}
+
+
 def is_force_email_window() -> bool:
-    value = _read_str_env("FORCE_EMAIL_WINDOW")
-    return (value or "").lower() == "true"
+    return _read_bool_env("FORCE_EMAIL_WINDOW")
 
 
 def _infer_smtp(sender_email: str):
@@ -118,4 +124,6 @@ def load_recipients() -> list:
 
 
 # --- State file (persists seen listing IDs across restarts) ---
-STATE_FILE = "seen_ids.json"
+STATE_FILE = _read_str_env("STATE_FILE") or "seen_ids.json"
+LOG_FILE = _read_str_env("LOG_FILE") or "crous.log"
+ENABLE_FILE_LOGGING = _read_bool_env("ENABLE_FILE_LOGGING", True)

@@ -5,6 +5,7 @@ Persist runtime state to disk so we can:
 """
 import json
 import os
+from pathlib import Path
 from config import STATE_FILE
 
 
@@ -56,6 +57,11 @@ def load_runtime_state() -> dict:
     }
 
 
+def _ensure_parent_dir(path: str):
+    parent = Path(path).expanduser().resolve().parent
+    parent.mkdir(parents=True, exist_ok=True)
+
+
 def save_runtime_state(state_data: dict):
     payload = _default_payload()
     payload["seen_ids"] = sorted(str(item) for item in state_data.get("seen_ids", set()) if item is not None)
@@ -63,6 +69,7 @@ def save_runtime_state(state_data: dict):
     payload["daily_ids"] = sorted(str(item) for item in state_data.get("daily_ids", set()) if item is not None)
     payload["daily_items"] = [item for item in state_data.get("daily_items", []) if isinstance(item, dict)]
     payload["last_summary_date"] = str(state_data.get("last_summary_date", "") or "")
+    _ensure_parent_dir(STATE_FILE)
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(payload, f)
 

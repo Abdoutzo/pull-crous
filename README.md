@@ -2,10 +2,9 @@
 
 I was looking for a student room in Paris and quickly realized the CROUS website is kind of a joke to navigate. The map search only shows rooms that are "actively listed" — meaning most of the time it's just empty and you think nothing's available. But turns out there's a whole database of rooms sitting behind the scenes with IDs from 1 to 3132, each with their own page, and some of them quietly flip to available without ever showing up on the map.
 
-So I built this. It hits every single room's API endpoint directly, filters down to Ile-de-France, and polls on a weekday schedule:
-- Tuesday + Friday: every 5 minutes
-- Monday + Wednesday + Thursday: every 15 minutes
-- Weekend: no email
+So I built this. It hits every single room's API endpoint directly, filters down to Ile-de-France, and polls continuously:
+- Weekdays: every 5 minutes
+- Weekend: quiet mode (no scan emails)
 - Emails only between 08:00 and 18:00 (Europe/Paris)
 
 Zero paid services. Just Python and a standard SMTP account.
@@ -33,8 +32,8 @@ When a room drops, the email tells you the name and full address of the residenc
 ## Setup
 
 ```bash
-git clone https://github.com/badreddinesaadioui/CROUS_Scrapper_IDF
-cd crous_scrapper
+git clone https://github.com/Abdoutzo/pull-crous
+cd pull-crous
 
 python3 -m venv .venv
 source .venv/bin/activate
@@ -68,14 +67,33 @@ python3 main.py
 ```
 
 It'll scan all ~420 IDF rooms and send one email per scan window:
-- Tuesday + Friday: every 5 minutes
-- Monday + Wednesday + Thursday: every 15 minutes
+- Monday to Friday: every 5 minutes
 - Saturday + Sunday: no email
 - Hours: 08:00 to 18:00 (Europe/Paris)
 
 You can also just leave it running on your machine — keep the terminal open and don't close the laptop. If you close the lid on a MacBook it will sleep even if plugged in and the script stops. To avoid that go to System Settings -> Battery -> Options and enable "Prevent automatic sleeping when the display is off".
 
-Or deploy it for free on GitHub Actions (already configured in `.github/workflows/crous-monitor.yml`). It runs in the cloud even if your computer is off.
+## Recommended deployment
+
+The reliable production setup is Railway, not GitHub Actions. Railway keeps one worker alive and lets `main.py` run as a normal long-lived loop, which is much more dependable than GitHub's scheduled runner cadence for a 5-minute monitor.
+
+Current Railway entrypoint:
+
+```bash
+python main.py
+```
+
+Recommended Railway env vars:
+
+```bash
+STATE_FILE=/data/seen_ids.json
+LOG_FILE=/data/crous.log
+ENABLE_FILE_LOGGING=true
+```
+
+If you mount a Railway volume at `/data`, the bot keeps its seen IDs and daily summary state across restarts/deploys.
+
+GitHub Actions is still useful as a free backup and for manual SMTP tests.
 
 Important GitHub note: scheduled workflows in public repos are automatically disabled after 60 days without repository activity. If the monitor suddenly stops, push a small commit (or re-enable the workflow in the Actions tab) to wake it back up.
 For an immediate manual email test outside business hours, open the Actions tab, run `CROUS Monitor`, and set `force_email_window=true`.
@@ -93,6 +111,11 @@ For a strict SMTP check, keep `require_email_success=true` so the manual run fai
 | `SMTP_SECURITY` | Optional: `starttls`, `ssl`, or `none` |
 | `SMTP_USERNAME` | Optional manual SMTP username override |
 | `SMTP_PASSWORD` | Optional manual SMTP password override |
+| `STATE_FILE` | Optional path for persisted monitor state (`seen_ids`, daily summary state) |
+| `LOG_FILE` | Optional path for file logs |
+| `ENABLE_FILE_LOGGING` | Optional: `true`/`false` to keep a log file in addition to stdout |
+| `FORCE_EMAIL_WINDOW` | Manual-test override to bypass the 08:00-18:00 / weekday restriction |
+| `REQUIRE_EMAIL_SUCCESS` | Manual-test guard to fail the run if SMTP delivery fails |
 
 For multiple recipients just comma-separate them: `you@gmail.com,friend@gmail.com,other@gmail.com`
 
@@ -120,3 +143,4 @@ crous_scrapper/
 - The CSV is built once and stays static, re-run `build_csv.py` and `filter_idf.py` if you want fresh data
 - Requests are throttled on purpose, don't lower it below 30s or you'll probably get rate-limited
 - `seen_ids.json` keeps track of what's been alerted so you don't get spammed after a restart
+- For exact 5-minute uptime, prefer Railway over GitHub scheduled workflows

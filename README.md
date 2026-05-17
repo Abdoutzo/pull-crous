@@ -55,13 +55,41 @@ python filter_idf.py
 python main.py
 ```
 
+## GitHub Actions
+
+For a fully free setup, GitHub Actions is the recommended path for this repo. The workflow is now pinned to Gmail-style SMTP so you only need one secret and two variables.
+
+Repository variables:
+- `SENDER_EMAIL`
+- `RECIPIENT_EMAIL`
+
+Repository secrets:
+- `EMAIL_APP_PASSWORD`
+
+Recommended GitHub configuration:
+
+```text
+Variable: SENDER_EMAIL=your_sender@gmail.com
+Variable: RECIPIENT_EMAIL=your_recipient@example.com
+Secret:   EMAIL_APP_PASSWORD=your_gmail_app_password
+```
+
+Useful manual inputs:
+- `force_email_window=true` to bypass weekday/hour restrictions
+- `require_email_success=true` to fail the run if delivery fails
+- `reset_state=true` to resend currently available listings once
+
+GitHub schedule notes:
+- The cron is offset to minute `2,7,12,...,57` instead of the top of the hour because GitHub documents that scheduled workflows are more likely to be delayed or dropped under heavy load at the start of an hour.
+- Scheduled workflows in public repositories are automatically disabled after 60 days without repository activity. If the schedule stops, re-enable the workflow or push a small commit.
+
 ## Railway deployment
 
-Railway is the recommended production runtime because it keeps a worker alive continuously. GitHub Actions is still useful as a backup and for manual tests, but it is not dependable enough for a 5-minute monitor on its own.
+Railway is optional now, not the default path. It is still useful if you later want a continuously running worker.
 
-Important: Railway documents that SMTP is only available on the Pro plan and above. Free, Trial, and Hobby plans must use an HTTPS email API instead. This repo now supports Resend for that case.
+Important: Railway documents that SMTP is only available on the Pro plan and above. Free, Trial, and Hobby plans must use an HTTPS email API instead. This repo still supports Resend for that case.
 
-Recommended Railway variables:
+If you later come back to Railway, the Resend variables are:
 
 ```env
 EMAIL_PROVIDER=resend
@@ -76,36 +104,9 @@ LOG_FILE=/data/crous.log
 ENABLE_FILE_LOGGING=true
 ```
 
-Recommended Railway setup:
-- Service type: Worker
-- Start command: `python main.py`
-- Volume mount path: `/data`
-
 Resend note:
 - `RESEND_FROM_EMAIL` must use a verified sender/domain in Resend.
 - The default `resend.dev` testing domain only works when sending to the email address attached to your own Resend account.
-
-## GitHub Actions
-
-The workflow still works for manual tests and as a lightweight backup. It now supports both SMTP and Resend depending on the repository variables and secrets you provide.
-
-Repository variables:
-- `EMAIL_PROVIDER`
-- `SENDER_EMAIL`
-- `RECIPIENT_EMAIL`
-- `RESEND_FROM_EMAIL`
-- `RESEND_REPLY_TO`
-
-Repository secrets:
-- `EMAIL_APP_PASSWORD`
-- `RESEND_API_KEY`
-
-Useful manual inputs:
-- `force_email_window=true` to bypass weekday/hour restrictions
-- `require_email_success=true` to fail the run if delivery fails
-- `reset_state=true` to resend currently available listings once
-
-Important GitHub note: scheduled workflows in public repositories are automatically disabled after 60 days without repository activity. If the schedule stops, re-enable the workflow or push a small commit.
 
 ## Environment variables
 
@@ -114,7 +115,7 @@ Important GitHub note: scheduled workflows in public repositories are automatica
 | `EMAIL_PROVIDER` | `smtp`, `resend`, or `auto` |
 | `RECIPIENT_EMAIL` | Comma-separated recipient list |
 | `SENDER_EMAIL` | Sender identity used by SMTP and reply-to defaults |
-| `EMAIL_APP_PASSWORD` | Gmail app password for local SMTP |
+| `EMAIL_APP_PASSWORD` | Gmail app password for local SMTP or GitHub Actions |
 | `SMTP_HOST` | Optional SMTP override |
 | `SMTP_PORT` | Optional SMTP override |
 | `SMTP_SECURITY` | `starttls`, `ssl`, or `none` |
